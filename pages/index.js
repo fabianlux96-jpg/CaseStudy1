@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 const CASE_DATA = {
   client_name: "Max Mustermann",
+  matter_start_date: "25.03.2026",
   case_type: "Kündigungsschutzstreit im Arbeitsrecht",
   opponent: "ABC GmbH",
   facts:
@@ -10,7 +11,11 @@ const CASE_DATA = {
 };
 
 const DOCUMENT_TYPES = [
-  { value: "Forderungsschreiben", label: "Forderungsschreiben" }
+  { value: "Forderungsschreiben", label: "Forderungsschreiben" },
+  {
+    value: "Mahnschreiben an die Gegenseite",
+    label: "Mahnschreiben an die Gegenseite"
+  }
 ];
 
 export default function Home() {
@@ -32,8 +37,7 @@ export default function Home() {
     const text = await response.text();
     const cleaned = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     return {
-      error:
-        cleaned || "Der Server hat keine gültige JSON-Antwort zurückgegeben."
+      error: cleaned || "Der Server hat keine gültige JSON-Antwort zurückgegeben."
     };
   }
 
@@ -57,7 +61,6 @@ export default function Home() {
 
       if (!response.ok) {
         throw new Error(data.error || "Entwurf konnte nicht generiert werden.");
-        
       }
 
       setDraft(data.draft);
@@ -99,7 +102,10 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "forderungsschreiben.pdf";
+      link.download =
+        documentType === "Mahnschreiben an die Gegenseite"
+          ? "mahnschreiben.pdf"
+          : "forderungsschreiben.pdf";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -119,8 +125,8 @@ export default function Home() {
           <h1>One-Click Drafting</h1>
           <p className="hero-copy">
             Aus strukturierten Falldaten entsteht mit einem Klick ein nahezu fertiges
-            juristisches Forderungsschreiben, das direkt bearbeitet und als PDF exportiert
-            werden kann.
+            juristisches Schreiben, das direkt bearbeitet und als PDF exportiert werden
+            kann.
           </p>
         </div>
 
@@ -160,6 +166,10 @@ export default function Home() {
             <div>
               <dt>Mandant</dt>
               <dd>{CASE_DATA.client_name}</dd>
+            </div>
+            <div>
+              <dt>Mandatsbeginn</dt>
+              <dd>{CASE_DATA.matter_start_date}</dd>
             </div>
             <div>
               <dt>Rechtsgebiet</dt>

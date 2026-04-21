@@ -9,71 +9,20 @@ const PAGE = {
   marginBottom: 56
 };
 
-function normalizeHeading(line = "") {
-  return line
-    .toLowerCase()
-    .replace(/^[\d.\-\s]+/, "")
-    .replace(":", "")
-    .trim();
-}
-
-function extractSections(draft) {
-  const lines = draft
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const sectionMap = {
-    sachverhalt: [],
-    "rechtliche wurdigung": [],
-    forderung: []
-  };
-
-  let currentSection = "";
-
-  for (const line of lines) {
-    const heading = normalizeHeading(line);
-
-    if (heading.includes("sachverhalt")) {
-      currentSection = "sachverhalt";
-      continue;
-    }
-
-    if (heading.includes("rechtliche")) {
-      currentSection = "rechtliche wurdigung";
-      continue;
-    }
-
-    if (heading.includes("forderung")) {
-      currentSection = "forderung";
-      continue;
-    }
-
-    if (currentSection) {
-      sectionMap[currentSection].push(line);
-    }
-  }
-
-  return {
-    sachverhalt: sectionMap.sachverhalt.join("\n\n") || draft,
-    rechtlicheWuerdigung:
-      sectionMap["rechtliche wurdigung"].join("\n\n") ||
-      "Die rechtliche Wurdigung ergibt sich aus dem oben dargestellten Sachverhalt.",
-    forderung:
-      sectionMap.forderung.join("\n\n") ||
-      "Wir fordern Sie auf, die berechtigten Anspruche unverzuglich zu erfullen."
-  };
-}
-
-function splitParagraphs(value = "") {
+function sanitizePdfText(value = "") {
   return value
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, "-")
+    .replace(/[\u2018\u2019\u201a]/g, "'")
+    .replace(/[\u201c\u201d\u201e]/g, '"')
+    .replace(/\u2026/g, "...")
+    .replace(/\u2022/g, "-")
+    .replace(/\u200b/g, "");
 }
 
 function wrapText(text, font, fontSize, maxWidth) {
-  const words = text.split(/\s+/).filter(Boolean);
+  const words = sanitizePdfText(text).split(/\s+/).filter(Boolean);
   const lines = [];
   let currentLine = "";
 
@@ -137,13 +86,48 @@ function drawWrappedParagraph(state, text, options = {}) {
   state.cursorY -= options.afterSpacing || 6;
 }
 
-function drawSectionHeading(state, text, options) {
-  ensurePage(state, 24);
-  drawLine(state.page, text, PAGE.marginLeft, state.cursorY, options);
-  state.cursorY -= 18;
+function drawDraftVerbatim(state, draft, options = {}) {
+  const size = options.size || 12;
+  const lineHeight = options.lineHeight || size * 1.45;
+  const width = options.width || PAGE.width - PAGE.marginLeft - PAGE.marginRight;
+  const lines = sanitizePdfText(draft).split("\n");
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\r/g, "");
+
+    if (!line.trim()) {
+      ensurePage(state, lineHeight);
+      state.cursorY -= lineHeight;
+      continue;
+    }
+
+    const wrappedLines = wrapText(line, options.font, size, width);
+
+    for (const wrappedLine of wrappedLines) {
+      ensurePage(state, lineHeight);
+      drawLine(state.page, wrappedLine, PAGE.marginLeft, state.cursorY, options);
+      state.cursorY -= lineHeight;
+    }
+  }
 }
 
-async function createPdf(caseData, draft) {
+function getDocumentSubject(documentType, clientName) {
+  if (documentType === "Mahnschreiben an die Gegenseite") {
+    return `Mahnschreiben in Sachen ${clientName}`;
+  }
+
+  return `Forderungsschreiben in Sachen ${clientName}`;
+}
+
+function getDownloadFilename(documentType) {
+  if (documentType === "Mahnschreiben an die Gegenseite") {
+    return "mahnschreiben.pdf";
+  }
+
+  return "forderungsschreiben.pdf";
+}
+
+async function createPdf(caseData, draft, documentType) {
   const pdf = await PDFDocument.create();
   let page = pdf.addPage([PAGE.width, PAGE.height]);
 
@@ -162,22 +146,19 @@ async function createPdf(caseData, draft) {
     lineHeight: 17
   };
 
-  const boldOptions = {
-    font: timesBold,
-    size: 12,
-    lineHeight: 17
-  };
-
   const today = new Intl.DateTimeFormat("de-DE", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric"
   }).format(new Date());
 
-  const sections = extractSections(draft);
-  const subject = `Forderungsschreiben in Sachen ${caseData.client_name}`;
+  const safeCaseData = {
+    client_name: sanitizePdfText(caseData.client_name),
+    opponent: sanitizePdfText(caseData.opponent)
+  };
+  const subject = getDocumentSubject(documentType, safeCaseData.client_name);
   const recipientLines = [
-    caseData.opponent,
+    safeCaseData.opponent,
     "z. Hd. Rechtsabteilung",
     "Musterweg 5",
     "10117 Berlin"
@@ -229,37 +210,7 @@ async function createPdf(caseData, draft) {
 
   state.cursorY -= 32;
 
-  drawWrappedParagraph(state, "Sehr geehrte Damen und Herren,", bodyOptions);
-  drawWrappedParagraph(
-    state,
-    `wir zeigen an, dass wir die rechtlichen Interessen von ${caseData.client_name} vertreten. Bezugnehmend auf den nachstehenden Sachverhalt nehmen wir wie folgt Stellung.`,
-    bodyOptions
-  );
-
-  drawSectionHeading(state, "Sachverhalt", boldOptions);
-  for (const paragraph of splitParagraphs(sections.sachverhalt)) {
-    drawWrappedParagraph(state, paragraph, bodyOptions);
-  }
-
-  drawSectionHeading(state, "Rechtliche Wurdigung", boldOptions);
-  for (const paragraph of splitParagraphs(sections.rechtlicheWuerdigung)) {
-    drawWrappedParagraph(state, paragraph, bodyOptions);
-  }
-
-  drawSectionHeading(state, "Forderung", boldOptions);
-  for (const paragraph of splitParagraphs(sections.forderung)) {
-    drawWrappedParagraph(state, paragraph, bodyOptions);
-  }
-
-  drawWrappedParagraph(
-    state,
-    "Wir bitten um schriftliche Bestatigung und Erfullung der vorstehenden Forderung innerhalb angemessener Frist.",
-    bodyOptions
-  );
-
-  state.cursorY -= 12;
-  drawWrappedParagraph(state, "Mit freundlichen Grussen", bodyOptions);
-  drawWrappedParagraph(state, "Kanzlei Legalhero", boldOptions);
+  drawDraftVerbatim(state, draft, bodyOptions);
 
   return pdf.save();
 }
@@ -269,17 +220,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { caseData, draft } = req.body || {};
+  const { caseData, draft, documentType } = req.body || {};
 
-  if (!caseData || !draft) {
-    return res.status(400).json({ error: "Falldaten und Entwurf sind erforderlich." });
+  if (!caseData || !draft || !documentType) {
+    return res
+      .status(400)
+      .json({ error: "Falldaten, Dokumenttyp und Entwurf sind erforderlich." });
   }
 
   try {
-    const pdfBytes = await createPdf(caseData, draft);
+    const pdfBytes = await createPdf(caseData, draft, documentType);
+    const filename = getDownloadFilename(documentType);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", 'attachment; filename="forderungsschreiben.pdf"');
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     return res.status(200).send(Buffer.from(pdfBytes));
   } catch (error) {
     return res.status(500).json({
