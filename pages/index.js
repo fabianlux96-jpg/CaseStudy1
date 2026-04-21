@@ -150,7 +150,8 @@ export default function Home() {
             onClick={handleGenerateDraft}
             disabled={isGenerating}
           >
-            {isGenerating ? "Entwurf wird erstellt..." : "Entwurf erstellen"}
+            <span>{isGenerating ? "Entwurf wird erstellt..." : "Entwurf erstellen"}</span>
+            {isGenerating ? <span className="button-spinner" aria-hidden="true" /> : null}
           </button>
         </div>
       </section>

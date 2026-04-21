@@ -95,6 +95,10 @@ select,
 
 .primary-button,
 .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   cursor: pointer;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
@@ -114,6 +118,15 @@ select,
 .primary-button {
   background: #2f4a62;
   color: #fff;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  animation: spin 0.7s linear infinite;
 }
 
 .secondary-button {
@@ -184,6 +197,12 @@ select,
 .error-message {
   margin: 14px 0 0;
   color: #a12727;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 900px) {
