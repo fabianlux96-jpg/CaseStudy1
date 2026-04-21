@@ -9,6 +9,59 @@ const PAGE = {
   marginBottom: 56
 };
 
+const PDF_COPY = {
+  de: {
+    headerLines: [
+      "Kanzlei Legalhero",
+      "Musterstraße 12",
+      "10115 Berlin",
+      "kontakt@legalhero.de"
+    ],
+    recipientLines: (opponent) => [
+      opponent,
+      "z. Hd. Rechtsabteilung",
+      "Musterweg 5",
+      "10117 Berlin"
+    ],
+    datePrefix: "Berlin, den",
+    subjectByType: {
+      demand_letter: "Forderungsschreiben in Sachen",
+      reminder_letter: "Mahnschreiben in Sachen"
+    },
+    fileNames: {
+      demand_letter: "forderungsschreiben.pdf",
+      reminder_letter: "mahnschreiben.pdf"
+    },
+    badRequest: "Falldaten, Dokumenttyp und Entwurf sind erforderlich.",
+    createError: "Beim Erstellen des PDFs ist ein Fehler aufgetreten."
+  },
+  en: {
+    headerLines: [
+      "Legalhero Law Office",
+      "Musterstrasse 12",
+      "10115 Berlin",
+      "kontakt@legalhero.de"
+    ],
+    recipientLines: (opponent) => [
+      opponent,
+      "Attn. Legal Department",
+      "Musterweg 5",
+      "10117 Berlin"
+    ],
+    datePrefix: "Berlin,",
+    subjectByType: {
+      demand_letter: "Demand Letter regarding",
+      reminder_letter: "Reminder Letter regarding"
+    },
+    fileNames: {
+      demand_letter: "demand-letter.pdf",
+      reminder_letter: "reminder-letter.pdf"
+    },
+    badRequest: "Case data, document type, and draft are required.",
+    createError: "An error occurred while creating the PDF."
+  }
+};
+
 function sanitizePdfText(value = "") {
   return value
     .replace(/\r\n/g, "\n")
@@ -18,7 +71,8 @@ function sanitizePdfText(value = "") {
     .replace(/[\u201c\u201d\u201e]/g, '"')
     .replace(/\u2026/g, "...")
     .replace(/\u2022/g, "-")
-    .replace(/\u200b/g, "");
+    .replace(/\u200b/g, "")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A1-\u00FF]/g, "");
 }
 
 function wrapText(text, font, fontSize, maxWidth) {
@@ -70,22 +124,6 @@ function ensurePage(state, requiredHeight = 20) {
   state.cursorY = PAGE.height - PAGE.marginTop;
 }
 
-function drawWrappedParagraph(state, text, options = {}) {
-  const size = options.size || 12;
-  const lineHeight = options.lineHeight || size * 1.45;
-  const x = options.x || PAGE.marginLeft;
-  const width = options.width || PAGE.width - PAGE.marginLeft - PAGE.marginRight;
-  const lines = wrapText(text, options.font, size, width);
-
-  for (const line of lines) {
-    ensurePage(state, lineHeight);
-    drawLine(state.page, line, x, state.cursorY, options);
-    state.cursorY -= lineHeight;
-  }
-
-  state.cursorY -= options.afterSpacing || 6;
-}
-
 function drawDraftVerbatim(state, draft, options = {}) {
   const size = options.size || 12;
   const lineHeight = options.lineHeight || size * 1.45;
@@ -111,28 +149,27 @@ function drawDraftVerbatim(state, draft, options = {}) {
   }
 }
 
-function getDocumentSubject(documentType, clientName) {
-  if (documentType === "Mahnschreiben an die Gegenseite") {
-    return `Mahnschreiben in Sachen ${clientName}`;
-  }
-
-  return `Forderungsschreiben in Sachen ${clientName}`;
+function getLocale(language) {
+  return language === "en" ? "en-GB" : "de-DE";
 }
 
-function getDownloadFilename(documentType) {
-  if (documentType === "Mahnschreiben an die Gegenseite") {
-    return "mahnschreiben.pdf";
-  }
-
-  return "forderungsschreiben.pdf";
+function getDocumentSubject(language, documentType, clientName) {
+  const copy = PDF_COPY[language] || PDF_COPY.de;
+  return `${copy.subjectByType[documentType] || copy.subjectByType.demand_letter} ${clientName}`;
 }
 
-async function createPdf(caseData, draft, documentType) {
+function getDownloadFilename(language, documentType) {
+  const copy = PDF_COPY[language] || PDF_COPY.de;
+  return copy.fileNames[documentType] || copy.fileNames.demand_letter;
+}
+
+async function createPdf(caseData, draft, documentType, language) {
   const pdf = await PDFDocument.create();
   let page = pdf.addPage([PAGE.width, PAGE.height]);
 
   const timesRoman = await pdf.embedFont(StandardFonts.TimesRoman);
   const timesBold = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const copy = PDF_COPY[language] || PDF_COPY.de;
 
   const state = {
     pdf,
@@ -146,7 +183,7 @@ async function createPdf(caseData, draft, documentType) {
     lineHeight: 17
   };
 
-  const today = new Intl.DateTimeFormat("de-DE", {
+  const today = new Intl.DateTimeFormat(getLocale(language), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric"
@@ -156,24 +193,13 @@ async function createPdf(caseData, draft, documentType) {
     client_name: sanitizePdfText(caseData.client_name),
     opponent: sanitizePdfText(caseData.opponent)
   };
-  const subject = getDocumentSubject(documentType, safeCaseData.client_name);
-  const recipientLines = [
-    safeCaseData.opponent,
-    "z. Hd. Rechtsabteilung",
-    "Musterweg 5",
-    "10117 Berlin"
-  ];
-
-  const headerLines = [
-    "Kanzlei Legalhero",
-    "Musterstrasse 12",
-    "10115 Berlin",
-    "kontakt@legalhero.de"
-  ];
+  const subject = getDocumentSubject(language, documentType, safeCaseData.client_name);
+  const recipientLines = copy.recipientLines(safeCaseData.opponent);
+  const headerLines = copy.headerLines;
 
   const rightColumnX = 360;
   for (const [index, line] of headerLines.entries()) {
-    drawLine(state.page, line, rightColumnX, state.cursorY - index * 15, {
+    drawLine(state.page, sanitizePdfText(line), rightColumnX, state.cursorY - index * 15, {
       font: index === 0 ? timesBold : timesRoman,
       size: index === 0 ? 13 : 11
     });
@@ -182,13 +208,13 @@ async function createPdf(caseData, draft, documentType) {
   state.cursorY -= 84;
 
   for (const [index, line] of recipientLines.entries()) {
-    drawLine(state.page, line, PAGE.marginLeft, state.cursorY - index * 15, {
+    drawLine(state.page, sanitizePdfText(line), PAGE.marginLeft, state.cursorY - index * 15, {
       font: timesRoman,
       size: 11
     });
   }
 
-  drawLine(state.page, `Berlin, den ${today}`, rightColumnX, state.cursorY, {
+  drawLine(state.page, `${copy.datePrefix} ${today}`, rightColumnX, state.cursorY, {
     font: timesRoman,
     size: 11
   });
@@ -220,24 +246,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { caseData, draft, documentType } = req.body || {};
+  const { caseData, draft, documentType, language = "de" } = req.body || {};
+  const copy = PDF_COPY[language] || PDF_COPY.de;
 
   if (!caseData || !draft || !documentType) {
-    return res
-      .status(400)
-      .json({ error: "Falldaten, Dokumenttyp und Entwurf sind erforderlich." });
+    return res.status(400).json({ error: copy.badRequest });
   }
 
   try {
-    const pdfBytes = await createPdf(caseData, draft, documentType);
-    const filename = getDownloadFilename(documentType);
+    const pdfBytes = await createPdf(caseData, draft, documentType, language);
+    const filename = getDownloadFilename(language, documentType);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     return res.status(200).send(Buffer.from(pdfBytes));
   } catch (error) {
     return res.status(500).json({
-      error: error?.message || "Beim Erstellen des PDFs ist ein Fehler aufgetreten."
+      error: error?.message || copy.createError
     });
   }
 }

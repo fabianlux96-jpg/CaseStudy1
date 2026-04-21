@@ -1,30 +1,131 @@
 import { useMemo, useState } from "react";
 
-const CASE_DATA = {
-  client_name: "Max Mustermann",
-  matter_start_date: "25.03.2026",
-  case_type: "Kündigungsschutzstreit im Arbeitsrecht",
-  opponent: "ABC GmbH",
-  facts:
-    "Der Mandant war seit fünf Jahren als Projektmanager bei der ABC GmbH beschäftigt. Mit Schreiben vom 12. März 2026 wurde ihm fristlos gekündigt. Eine vorherige Abmahnung erfolgte nicht. Der Mandant bestreitet die vorgeworfenen Pflichtverletzungen und hält die Kündigung für unwirksam.",
-  goal: "Weiterbeschäftigung oder angemessene Abfindung"
+const LANGUAGE_OPTIONS = [
+  { value: "de", label: "Deutsch" },
+  { value: "en", label: "English" }
+];
+
+const DOCUMENT_TYPE_OPTIONS = {
+  de: [
+    { value: "demand_letter", label: "Forderungsschreiben" },
+    { value: "reminder_letter", label: "Mahnschreiben an die Gegenseite" }
+  ],
+  en: [
+    { value: "demand_letter", label: "Demand Letter" },
+    { value: "reminder_letter", label: "Reminder Letter to Opposing Party" }
+  ]
 };
 
-const DOCUMENT_TYPES = [
-  { value: "Forderungsschreiben", label: "Forderungsschreiben" },
-  {
-    value: "Mahnschreiben an die Gegenseite",
-    label: "Mahnschreiben an die Gegenseite"
+const CASE_DATA = {
+  de: {
+    client_name: "Max Mustermann",
+    matter_start_date: "25.03.2026",
+    case_type: "Kündigungsschutzstreit im Arbeitsrecht",
+    opponent: "ABC GmbH",
+    facts:
+      "Der Mandant war seit fünf Jahren als Projektmanager bei der ABC GmbH beschäftigt. Mit Schreiben vom 12. März 2026 wurde ihm fristlos gekündigt. Eine vorherige Abmahnung erfolgte nicht. Der Mandant bestreitet die vorgeworfenen Pflichtverletzungen und hält die Kündigung für unwirksam.",
+    goal: "Weiterbeschäftigung oder angemessene Abfindung"
+  },
+  en: {
+    client_name: "Max Mustermann",
+    matter_start_date: "25.03.2026",
+    case_type: "Employment dismissal dispute",
+    opponent: "ABC GmbH",
+    facts:
+      "The client had been employed as a project manager at ABC GmbH for five years. By letter dated March 12, 2026, his employment was terminated without notice. No prior warning had been issued. The client disputes the alleged misconduct and considers the termination invalid.",
+    goal: "Continued employment or adequate compensation"
   }
+};
+
+const COPY = {
+  de: {
+    eyebrow: "Legalhero Prototype",
+    title: "One-Click Drafting",
+    hero:
+      "Aus strukturierten Falldaten entsteht mit einem Klick ein nahezu fertiges juristisches Schreiben, das direkt bearbeitet und als PDF exportiert werden kann.",
+    languageLabel: "Sprache",
+    documentTypeLabel: "Dokumenttyp",
+    generateIdle: "Entwurf erstellen",
+    generateLoading: "Entwurf wird erstellt...",
+    overviewTitle: "Fallübersicht",
+    overviewSubtitle: "Strukturierte Falldaten aus dem Mandat",
+    draftTitle: "Generierter Entwurf",
+    draftSubtitle: "Editierbarer Entwurf für die weitere juristische Bearbeitung",
+    downloadIdle: "Als PDF herunterladen",
+    downloadLoading: "PDF wird erstellt...",
+    textareaPlaceholder: "Der generierte Entwurf erscheint hier...",
+    missingDraftError: "Bitte zuerst einen Entwurf generieren.",
+    invalidJsonError: "Der Server hat keine gültige JSON-Antwort zurückgegeben.",
+    generateError: "Entwurf konnte nicht generiert werden.",
+    pdfError: "PDF konnte nicht erstellt werden.",
+    fields: {
+      client_name: "Mandant",
+      matter_start_date: "Mandatsbeginn",
+      case_type: "Rechtsgebiet",
+      opponent: "Gegner",
+      facts: "Sachverhalt",
+      goal: "Ziel"
+    },
+    fileNames: {
+      demand_letter: "forderungsschreiben.pdf",
+      reminder_letter: "mahnschreiben.pdf"
+    }
+  },
+  en: {
+    eyebrow: "Legalhero Prototype",
+    title: "One-Click Drafting",
+    hero:
+      "Structured case data becomes a near-complete legal draft in one click, ready to edit and export as a PDF.",
+    languageLabel: "Language",
+    documentTypeLabel: "Document Type",
+    generateIdle: "Generate Draft",
+    generateLoading: "Generating Draft...",
+    overviewTitle: "Case Overview",
+    overviewSubtitle: "Structured case data from the matter",
+    draftTitle: "Generated Draft",
+    draftSubtitle: "Editable draft for further legal review",
+    downloadIdle: "Download as PDF",
+    downloadLoading: "Creating PDF...",
+    textareaPlaceholder: "The generated draft will appear here...",
+    missingDraftError: "Please generate a draft first.",
+    invalidJsonError: "The server returned an invalid JSON response.",
+    generateError: "The draft could not be generated.",
+    pdfError: "The PDF could not be created.",
+    fields: {
+      client_name: "Client",
+      matter_start_date: "Matter Start Date",
+      case_type: "Practice Area",
+      opponent: "Opponent",
+      facts: "Facts",
+      goal: "Goal"
+    },
+    fileNames: {
+      demand_letter: "demand-letter.pdf",
+      reminder_letter: "reminder-letter.pdf"
+    }
+  }
+};
+
+const CASE_FIELD_ORDER = [
+  "client_name",
+  "matter_start_date",
+  "case_type",
+  "opponent",
+  "facts",
+  "goal"
 ];
 
 export default function Home() {
-  const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0].value);
+  const [language, setLanguage] = useState("de");
+  const [documentType, setDocumentType] = useState("demand_letter");
   const [draft, setDraft] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState("");
 
+  const copy = COPY[language];
+  const caseData = CASE_DATA[language];
+  const documentTypeOptions = DOCUMENT_TYPE_OPTIONS[language];
   const hasDraft = useMemo(() => draft.trim().length > 0, [draft]);
 
   async function parseApiResponse(response) {
@@ -37,8 +138,14 @@ export default function Home() {
     const text = await response.text();
     const cleaned = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     return {
-      error: cleaned || "Der Server hat keine gültige JSON-Antwort zurückgegeben."
+      error: cleaned || copy.invalidJsonError
     };
+  }
+
+  function handleLanguageChange(nextLanguage) {
+    setLanguage(nextLanguage);
+    setDraft("");
+    setError("");
   }
 
   async function handleGenerateDraft() {
@@ -52,15 +159,16 @@ export default function Home() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          language,
           documentType,
-          caseData: CASE_DATA
+          caseData
         })
       });
 
       const data = await parseApiResponse(response);
 
       if (!response.ok) {
-        throw new Error(data.error || "Entwurf konnte nicht generiert werden.");
+        throw new Error(data.error || copy.generateError);
       }
 
       setDraft(data.draft);
@@ -73,7 +181,7 @@ export default function Home() {
 
   async function handleDownloadPdf() {
     if (!hasDraft) {
-      setError("Bitte zuerst einen Entwurf generieren.");
+      setError(copy.missingDraftError);
       return;
     }
 
@@ -87,25 +195,23 @@ export default function Home() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          language,
           documentType,
-          caseData: CASE_DATA,
+          caseData,
           draft
         })
       });
 
       if (!response.ok) {
         const data = await parseApiResponse(response);
-        throw new Error(data.error || "PDF konnte nicht erstellt werden.");
+        throw new Error(data.error || copy.pdfError);
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download =
-        documentType === "Mahnschreiben an die Gegenseite"
-          ? "mahnschreiben.pdf"
-          : "forderungsschreiben.pdf";
+      link.download = copy.fileNames[documentType];
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -120,24 +226,36 @@ export default function Home() {
   return (
     <main className="page-shell">
       <section className="hero-card">
-        <div>
-          <p className="eyebrow">Legalhero Prototype</p>
-          <h1>One-Click Drafting</h1>
-          <p className="hero-copy">
-            Aus strukturierten Falldaten entsteht mit einem Klick ein nahezu fertiges
-            juristisches Schreiben, das direkt bearbeitet und als PDF exportiert werden
-            kann.
-          </p>
+        <div className="hero-header">
+          <div>
+            <p className="eyebrow">{copy.eyebrow}</p>
+            <h1>{copy.title}</h1>
+            <p className="hero-copy">{copy.hero}</p>
+          </div>
+
+          <label className="field field-compact language-field">
+            <span>{copy.languageLabel}</span>
+            <select
+              value={language}
+              onChange={(event) => handleLanguageChange(event.target.value)}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="control-bar">
           <label className="field">
-            <span>Dokumenttyp</span>
+            <span>{copy.documentTypeLabel}</span>
             <select
               value={documentType}
               onChange={(event) => setDocumentType(event.target.value)}
             >
-              {DOCUMENT_TYPES.map((type) => (
+              {documentTypeOptions.map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
                 </option>
@@ -150,7 +268,7 @@ export default function Home() {
             onClick={handleGenerateDraft}
             disabled={isGenerating}
           >
-            <span>{isGenerating ? "Entwurf wird erstellt..." : "Entwurf erstellen"}</span>
+            <span>{isGenerating ? copy.generateLoading : copy.generateIdle}</span>
             {isGenerating ? <span className="button-spinner" aria-hidden="true" /> : null}
           </button>
         </div>
@@ -159,43 +277,25 @@ export default function Home() {
       <section className="content-grid">
         <article className="panel">
           <div className="panel-header">
-            <h2>Fallübersicht</h2>
-            <p>Strukturierte Falldaten aus dem Mandat</p>
+            <h2>{copy.overviewTitle}</h2>
+            <p>{copy.overviewSubtitle}</p>
           </div>
 
           <dl className="case-list">
-            <div>
-              <dt>Mandant</dt>
-              <dd>{CASE_DATA.client_name}</dd>
-            </div>
-            <div>
-              <dt>Mandatsbeginn</dt>
-              <dd>{CASE_DATA.matter_start_date}</dd>
-            </div>
-            <div>
-              <dt>Rechtsgebiet</dt>
-              <dd>{CASE_DATA.case_type}</dd>
-            </div>
-            <div>
-              <dt>Gegner</dt>
-              <dd>{CASE_DATA.opponent}</dd>
-            </div>
-            <div>
-              <dt>Sachverhalt</dt>
-              <dd>{CASE_DATA.facts}</dd>
-            </div>
-            <div>
-              <dt>Ziel</dt>
-              <dd>{CASE_DATA.goal}</dd>
-            </div>
+            {CASE_FIELD_ORDER.map((field) => (
+              <div key={field}>
+                <dt>{copy.fields[field]}</dt>
+                <dd>{caseData[field]}</dd>
+              </div>
+            ))}
           </dl>
         </article>
 
         <article className="panel">
           <div className="panel-header draft-header">
             <div>
-              <h2>Generierter Entwurf</h2>
-              <p>Editierbarer Entwurf für die weitere juristische Bearbeitung</p>
+              <h2>{copy.draftTitle}</h2>
+              <p>{copy.draftSubtitle}</p>
             </div>
 
             <button
@@ -203,7 +303,7 @@ export default function Home() {
               onClick={handleDownloadPdf}
               disabled={isDownloading || !hasDraft}
             >
-              {isDownloading ? "PDF wird erstellt..." : "Als PDF herunterladen"}
+              {isDownloading ? copy.downloadLoading : copy.downloadIdle}
             </button>
           </div>
 
@@ -211,7 +311,7 @@ export default function Home() {
             className="draft-textarea"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Der generierte Entwurf erscheint hier..."
+            placeholder={copy.textareaPlaceholder}
           />
 
           {error ? <p className="error-message">{error}</p> : null}
